@@ -1,0 +1,28 @@
+# Service configuration for 99x Data Platform
+# This file controls which services are enabled/disabled for platform and app layers
+
+platform:
+  # Database service configuration
+  # Options: "local" (Docker container) or "external" (external database)
+  db: local
+  
+  # Core services
+  hasura: true  # GraphQL engine
+  
+  # BI Tools (can enable both simultaneously)
+  metabase: false
+  superset: false
+  
+  # Web database manager (CloudBeaver Community)
+  cloudbeaver: true
+  
+  # Data orchestration (toggles both dagster-webserver and dagster-daemon)
+  dagster: true
+  
+  # Reverse proxy
+  nginx: false
+
+# App services configuration
+app:
+  # appbase-init is mandatory and always runs (not toggleable)
+  data-platform-service: true  # Data orchestration service (Dagster gRPC servers)

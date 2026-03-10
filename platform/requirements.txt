@@ -1,0 +1,9 @@
+dagster==1.10.21
+dagster-graphql
+dagster-webserver
+dagster-postgres==0.26.21
+dagster-docker
+pandas
+sqlalchemy
+psycopg2-binary
+sqlfluff

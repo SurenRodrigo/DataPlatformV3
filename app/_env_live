@@ -1,0 +1,204 @@
+################################################################################
+# APPBASE APP ENVIRONMENT CONFIGURATION
+################################################################################
+# Environment variables required for the app docker-compose.yaml services
+# Extracted from _env_sample based on actual usage in docker-compose.yaml
+################################################################################
+
+################################################################################
+# PLATFORM CONFIGURATION
+################################################################################
+# IMPORTANT: Service feature toggles are configured in service.yaml at project root
+# See service.yaml for enabling/disabling platform services (hasura, metabase, superset, dagster, nginx)
+# and app services (data-platform-service)
+# 
+# The following env vars are NO LONGER USED for feature toggling:
+#   - WITH_BI, WITH_BI_TOOL, WITH_ALL_BI, WITH_DAGSTER
+# These have been removed. All service enablement is controlled via service.yaml
+
+################################################################################
+# DATABASE CONFIGURATION
+################################################################################
+# Main AppBase Database
+APPBASE_DB_NAME=dataplatform
+APPBASE_DB_NAME_SW=dataplatform_sw
+APPBASE_DB_HOST="${DB_HOST}"
+APPBASE_DB_PORT=5432
+APPBASE_DB_USER="${DB_USER}"
+APPBASE_DB_PASSWORD="${DB_PASSWORD}"
+
+# AppBase Configuration Database  
+APPBASE_CONFIG_DB_HOST="${DB_HOST}"
+APPBASE_CONFIG_DB_PORT=5432
+APPBASE_CONFIG_DB_USER="${DB_USER}"
+APPBASE_CONFIG_DB_PASSWORD="${DB_PASSWORD}"
+APPBASE_CONFIG_DB_NAME=dataplatform
+
+################################################################################
+# HASURA GRAPHQL ENGINE CONFIGURATION
+################################################################################
+HASURA_DB_NAME=hasura
+HASURA_GRAPHQL_ADMIN_SECRET="${HASURA_ADMIN_SECRET}"
+HASURA_URL=http://hasura:8080
+
+################################################################################
+# METABASE BUSINESS INTELLIGENCE CONFIGURATION
+################################################################################
+METABASE_DB_NAME=metabase
+METABASE_USER=admin@admin.com
+METABASE_PASSWORD=admin
+METABASE_URL=http://metabase:3000
+METABASE_USE_SSL=false
+METABASE_APPBASE_DB_HOST="${DB_HOST}"
+
+################################################################################
+# APACHE SUPERSET BUSINESS INTELLIGENCE CONFIGURATION
+################################################################################
+SUPERSET_DB_NAME=superset
+SUPERSET_ADMIN_USER="${SUPERSET_ADMIN_USER}"
+SUPERSET_ADMIN_EMAIL="${SUPERSET_ADMIN_EMAIL}"
+SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD}"
+SUPERSET_SECRET_KEY="${SUPERSET_SECRET_KEY}"
+SUPERSET_URL=http://superset:8088
+SUPERSET_APPBASE_DB_HOST="${DB_HOST}"
+
+
+
+
+################################################################################
+# DAGSTER DATA ORCHESTRATION CONFIGURATION
+################################################################################
+# Dagster Integration for data pipeline orchestration
+# Note: Dagster enablement is controlled via service.yaml (platform.dagster)
+# The WITH_DAGSTER env var is NO LONGER USED for feature toggling
+DAGSTER_PORT="${DAGSTER_PORT:-3030}"
+DAGSTER_URL=http://dagster-webserver:${DAGSTER_PORT}
+DAGSTER_CODE_LOCATION=/app/dagster_code
+DAGSTER_CODE_LOCATION_NAME=appbase_pipelines
+DAGSTER_ADMIN_USER=admin
+DAGSTER_ADMIN_PASSWORD=admin
+DAGSTER_DB_NAME=dagster
+
+################################################################################
+# APPBASE SYSTEM INITIALIZATION CONFIGURATION
+################################################################################
+APPBASE_INIT_IMAGE=appbase-init:latest
+APPBASE_INIT_LOG_LEVEL=info
+RUN_DB_MIGRATIONS=true
+
+################################################################################
+# APPLICATION SECURITY CONFIGURATION
+################################################################################
+APP_BASE_SECRET="${HASURA_JWT_SECRET}"
+NODE_ENV=development
+
+################################################################################
+# PII ANONYMIZATION CONFIGURATION
+################################################################################
+# When set to 'false' (or 0/no), PII anonymization is disabled and raw values
+# are written as-is. When unset or any other value, anonymization is enabled.
+ANNONYMIZE_DATA=${ANNONYMIZE_DATA}
+
+################################################################################
+# CLIENT APPLICATION CONFIGURATION
+################################################################################
+# These variables are used in the client service but not defined in _env_sample
+# Adding with default values from docker-compose.yaml
+CLIENT_PORT=3001
+CLIENT_BUILD_TARGET=dev 
+
+################################################################################
+# PYAIRBYTE CACHE DATABASE CONFIGURATION
+################################################################################
+# PyAirbyte cache database for storing synced data from external connectors
+# Each connector will have its own schema within this database
+PYAIRBYTE_CACHE_DB_HOST="${DB_HOST}"
+PYAIRBYTE_CACHE_DB_PORT=5432
+PYAIRBYTE_CACHE_DB_USER="${DB_USER}"
+PYAIRBYTE_CACHE_DB_PASSWORD="${DB_PASSWORD}"
+PYAIRBYTE_CACHE_DB_NAME=dataplatform 
+
+################################################################################
+# PYAIRBYTE CONNECTOR DYNAMIC CONFIGURATION
+################################################################################
+# Provide per-connector configuration as a JSON object mapping connector name to
+# its configuration object. Each connector's object is passed as the `config`
+# when instantiating the source. Example keys can include api_key, start_date,
+# page_size, etc., depending on the connector's spec.
+#
+# Example (single line JSON string):
+# PYAIRBYTE_CONNECTOR_CONFIGS={"maranics-connector":{"api_key":"xxxxxxxx","start_date":"2024-01-01"},"sample-connector":{}}
+#
+# Notes:
+# - Keep this as a single line or escape newlines for docker-compose env parsing
+# - Secrets should be managed via your secret manager in production
+
+# Uncomment and configure as needed:
+PYAIRBYTE_CONNECTOR_CONFIGS="${PYAIRBYTE_CONNECTOR_CONFIGS}"
+
+################################################################################
+# ACTION HANDLER SERVICE CONFIGURATION
+################################################################################
+# APPLICATION MODE CONFIGURATION
+################################################################################
+# APP_MODE controls development vs production behavior for app services
+#   - development: Enables hot reload, mounts source code volumes, uses watch mode
+#   - production: Uses built containers, no volume mounts, optimized runtime
+# Default: production (for safety)
+# Set to 'development' for local development with hot reload
+APP_MODE=production
+################################################################################
+# AZURE SQL DATABASE CONFIGURATION (for WWI data sync)
+################################################################################
+# Azure SQL Server and Database details
+AZURE_SQL_SERVER_FQDN="${AZURE_SQL_SERVER_FQDN}"
+AZURE_SQL_PORT="${AZURE_SQL_PORT}"
+
+# Destination Database: dataplatform (with service principal)
+AZURE_SQL_DATABASE_NAME="${AZURE_SQL_DATABASE_NAME}"
+AZURE_DATAPLATFORM_DATA_CLIENT_ID="${AZURE_DATAPLATFORM_DATA_CLIENT_ID}"
+AZURE_DATAPLATFORM_DATA_CLIENT_SECRET="${AZURE_DATAPLATFORM_DATA_CLIENT_SECRET}"
+AZURE_DATAPLATFORM_DATA_TENANT_ID="${AZURE_DATAPLATFORM_DATA_TENANT_ID}"
+
+# Source Database: source_data / Wide World Importers (with service principal)
+AZURE_SOURCE_DATA_DATABASE_NAME="${AZURE_SOURCE_DATA_DATABASE_NAME}"
+AZURE_SOURCE_DATA_CLIENT_ID="${AZURE_SOURCE_DATA_CLIENT_ID}"
+AZURE_SOURCE_DATA_CLIENT_SECRET="${AZURE_SOURCE_DATA_CLIENT_SECRET}"
+AZURE_SOURCE_DATA_TENANT_ID="${AZURE_SOURCE_DATA_TENANT_ID}"
+
+# Azure SQL Admin Credentials (SQL Authentication - for direct DB sync)
+AZURE_SQL_ADMIN_USERNAME="${AZURE_SQL_ADMIN_USERNAME}"
+AZURE_SQL_ADMIN_PASSWORD="${AZURE_SQL_ADMIN_PASSWORD}"
+
+################################################################################
+# SAP BUSINESS ONE DATABASE CONFIGURATION (On-prem MSSQL)
+################################################################################
+# On-prem SAP Business One MSSQL server for invoice/credit data sync
+# Uses SQL Authentication
+SAP_B1_SERVER="${SAP_B1_SERVER}"
+SAP_B1_DATABASE="${SAP_B1_DATABASE}"
+SAP_B1_USERNAME="${SAP_B1_USERNAME}"
+SAP_B1_PASSWORD="${SAP_B1_PASSWORD}"
+
+################################################################################
+# MSSQL Data platofrm Database (SQL Authentication)
+################################################################################
+
+MSSQL_DATAPLATFORM_SERVER="${MSSQL_DATAPLATFORM_SERVER}"
+MSSQL_DATAPLATFORM_DATABASE="${MSSQL_DATAPLATFORM_DATABASE}"
+MSSQL_DATAPLATFORM_USERNAME="${MSSQL_DATAPLATFORM_USERNAME}"
+MSSQL_DATAPLATFORM_PASSWORD="${MSSQL_DATAPLATFORM_PASSWORD}"
+
+# DataSync Lookback Period (years)
+DATA_SYNC_LOOKBACK_YEARS="${DATA_SYNC_LOOKBACK_YEARS}"
+
+################################################################################
+# SHAREPOINT FILE SYNC CONFIGURATION
+################################################################################
+# SharePoint authentication credentials (service principal)
+SHAREPOINT_TENANT_ID="${SHAREPOINT_TENANT_ID}"
+SHAREPOINT_CLIENT_ID="${SHAREPOINT_CLIENT_ID}"
+SHAREPOINT_CLIENT_SECRET="${SHAREPOINT_CLIENT_SECRET}"
+SHAREPOINT_SITE_URL="${SHAREPOINT_SITE_URL}"
+SHAREPOINT_DRIVE_NAME="${SHAREPOINT_DRIVE_NAME}"
+SHAREPOINT_FILE_NAME="${SHAREPOINT_FILE_NAME}"

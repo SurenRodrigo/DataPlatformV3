@@ -1,0 +1,6 @@
+# Placeholder for future core model documentation and tests.
+# Add model definitions when implementing.
+# https://docs.getdbt.com/reference/model-properties
+version: 2
+
+models: []

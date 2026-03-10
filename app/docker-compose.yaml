@@ -1,0 +1,229 @@
+version: "3.8"
+#https://github.com/compose-spec/compose-spec/blob/master/spec.md#using-extensions-as-fragments
+x-logging: &default-logging
+  options:
+    max-size: "100m"
+    max-file: "5"
+  driver: json-file
+
+services:
+  # Application initialization service
+  appbase-init:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.appbase-init
+    image: ${APPBASE_INIT_IMAGE}
+    container_name: appbase-init
+    restart: "no"
+    environment:
+      # Database connection for application initialization
+      APPBASE_DB_HOST: ${APPBASE_DB_HOST}
+      APPBASE_DB_PORT: ${APPBASE_DB_PORT}
+      APPBASE_DB_USER: ${APPBASE_DB_USER}
+      APPBASE_DB_PASSWORD: ${APPBASE_DB_PASSWORD}
+      APPBASE_DB_NAME: ${APPBASE_DB_NAME}
+      
+      # Hasura connection for metadata initialization
+      HASURA_URL: ${HASURA_URL}
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${APPBASE_DB_USER}:${APPBASE_DB_PASSWORD}@${APPBASE_DB_HOST}:${APPBASE_DB_PORT}/${APPBASE_DB_NAME}
+      
+      # BI tool configuration (service states read from service.yaml, not env vars)
+      METABASE_URL: ${METABASE_URL}
+      METABASE_USER: ${METABASE_USER}
+      METABASE_PASSWORD: ${METABASE_PASSWORD}
+      METABASE_USE_SSL: ${METABASE_USE_SSL}
+      METABASE_APPBASE_DB_HOST: ${METABASE_APPBASE_DB_HOST}
+      SUPERSET_URL: ${SUPERSET_URL}
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_APPBASE_DB_HOST: ${SUPERSET_APPBASE_DB_HOST}
+      
+      # Dagster configuration moved to data-manager service
+      
+      # Application configuration
+      APP_BASE_SECRET: ${APP_BASE_SECRET}
+      NODE_ENV: ${NODE_ENV}
+      APPBASE_INIT_LOG_LEVEL: ${APPBASE_INIT_LOG_LEVEL}
+      
+      # Database configuration for services
+      APPBASE_CONFIG_DB_HOST: ${APPBASE_CONFIG_DB_HOST}
+      APPBASE_CONFIG_DB_PORT: ${APPBASE_CONFIG_DB_PORT}
+      APPBASE_CONFIG_DB_USER: ${APPBASE_CONFIG_DB_USER}
+      APPBASE_CONFIG_DB_PASSWORD: ${APPBASE_CONFIG_DB_PASSWORD}
+      APPBASE_CONFIG_DB_NAME: ${APPBASE_CONFIG_DB_NAME}
+      
+      # Service database names (for verification)
+      HASURA_DB_NAME: ${HASURA_DB_NAME}
+      METABASE_DB_NAME: ${METABASE_DB_NAME}
+      SUPERSET_DB_NAME: ${SUPERSET_DB_NAME}
+      
+      # Database migration configuration
+      RUN_DB_MIGRATIONS: ${RUN_DB_MIGRATIONS}
+
+      # Sharepoint configuration for file sync initialization
+      SHAREPOINT_TENANT_ID: ${SHAREPOINT_TENANT_ID}
+      SHAREPOINT_CLIENT_ID: ${SHAREPOINT_CLIENT_ID}
+      SHAREPOINT_CLIENT_SECRET: ${SHAREPOINT_CLIENT_SECRET}
+      SHAREPOINT_SITE_URL: ${SHAREPOINT_SITE_URL}
+      SHAREPOINT_DRIVE_NAME: ${SHAREPOINT_DRIVE_NAME:-Bridgestone}
+      SHAREPOINT_FILE_NAME: ${SHAREPOINT_FILE_NAME:-Mapping file - GB.xlsx}
+
+      # PyAirbyte cache Sweden database configuration for Swedish connectors
+      # PYAIRBYTE_CACHE_SWEDEN_DB_HOST: ${PYAIRBYTE_CACHE_SWEDEN_DB_HOST}
+      # PYAIRBYTE_CACHE_SWEDEN_DB_PORT: ${PYAIRBYTE_CACHE_SWEDEN_DB_PORT}
+      # PYAIRBYTE_CACHE_SWEDEN_DB_USER: ${PYAIRBYTE_CACHE_SWEDEN_DB_USER}
+      # PYAIRBYTE_CACHE_SWEDEN_DB_PASSWORD: ${PYAIRBYTE_CACHE_SWEDEN_DB_PASSWORD}
+      # PYAIRBYTE_CACHE_SWEDEN_DB_NAME: ${PYAIRBYTE_CACHE_SWEDEN_DB_NAME}
+    depends_on: []
+      # Note: Platform services (db, hasura) must be running before starting appbase-init
+      # These dependencies are managed at the orchestration level, not in this compose file
+    volumes:
+      # Mount service.yaml from project root for service configuration
+      - ../service.yaml:/app/service.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h ${APPBASE_DB_HOST} -p ${APPBASE_DB_PORT} -U ${APPBASE_DB_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - app-base-network
+
+  # Data Platform Service for Dagster orchestration
+  data-platform-service:
+    profiles: ["data-platform-service"]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.data-platform-service
+    image: appbase/data-manager:multistage
+    container_name: data-platform-service
+    restart: unless-stopped
+    environment:
+      # Dagster configuration - MUST match platform exactly
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      DAGSTER_GRPC_HOST: 0.0.0.0
+      DAGSTER_GRPC_PORT: 4266
+      DAGSTER_URL: http://dagster-webserver:3030
+      
+      # Database connection for Dagster assets - MUST match platform exactly
+      DATABASE_USER: ${APPBASE_DB_USER}
+      DATABASE_PASSWORD: ${APPBASE_DB_PASSWORD}
+      DATABASE_HOST: ${APPBASE_DB_HOST}
+      DATABASE_PORT: ${APPBASE_DB_PORT}
+      DAGSTER_DB_NAME: ${DAGSTER_DB_NAME?}
+      
+      # Additional database environment variables for Dagster assets
+      APPBASE_DB_HOST: ${APPBASE_DB_HOST}
+      APPBASE_DB_PORT: ${APPBASE_DB_PORT}
+      APPBASE_DB_USER: ${APPBASE_DB_USER}
+      APPBASE_DB_PASSWORD: ${APPBASE_DB_PASSWORD}
+      APPBASE_DB_NAME: ${APPBASE_DB_NAME}
+      APPBASE_DB_NAME_SW: ${APPBASE_DB_NAME_SW}
+      
+      # Application configuration
+      APP_BASE_SECRET: ${APP_BASE_SECRET}
+      NODE_ENV: ${NODE_ENV}
+      
+      # PyAirbyte cache database configuration
+      PYAIRBYTE_CACHE_DB_HOST: ${PYAIRBYTE_CACHE_DB_HOST}
+      PYAIRBYTE_CACHE_DB_PORT: ${PYAIRBYTE_CACHE_DB_PORT}
+      PYAIRBYTE_CACHE_DB_USER: ${PYAIRBYTE_CACHE_DB_USER}
+      PYAIRBYTE_CACHE_DB_PASSWORD: ${PYAIRBYTE_CACHE_DB_PASSWORD}
+      PYAIRBYTE_CACHE_DB_NAME: ${PYAIRBYTE_CACHE_DB_NAME}
+      # Connector-specific config overrides (JSON map keyed by connector name)
+      PYAIRBYTE_CONNECTOR_CONFIGS: ${PYAIRBYTE_CONNECTOR_CONFIGS}
+      
+      # Hasura configuration
+      HASURA_URL: ${HASURA_URL}
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      
+      # Azure SQL Database configuration for WWI data sync
+      AZURE_SQL_SERVER_FQDN: ${AZURE_SQL_SERVER_FQDN}
+      AZURE_SQL_PORT: ${AZURE_SQL_PORT}
+      
+      # Destination Database: dataplatform (with service principal)
+      AZURE_SQL_DATABASE_NAME: ${AZURE_SQL_DATABASE_NAME}
+      AZURE_DATAPLATFORM_DATA_CLIENT_ID: ${AZURE_DATAPLATFORM_DATA_CLIENT_ID}
+      AZURE_DATAPLATFORM_DATA_CLIENT_SECRET: ${AZURE_DATAPLATFORM_DATA_CLIENT_SECRET}
+      AZURE_DATAPLATFORM_DATA_TENANT_ID: ${AZURE_DATAPLATFORM_DATA_TENANT_ID}
+      
+      # Source Database: source_data / Wide World Importers (with service principal)
+      AZURE_SOURCE_DATA_DATABASE_NAME: ${AZURE_SOURCE_DATA_DATABASE_NAME}
+      AZURE_SOURCE_DATA_CLIENT_ID: ${AZURE_SOURCE_DATA_CLIENT_ID}
+      AZURE_SOURCE_DATA_CLIENT_SECRET: ${AZURE_SOURCE_DATA_CLIENT_SECRET}
+      AZURE_SOURCE_DATA_TENANT_ID: ${AZURE_SOURCE_DATA_TENANT_ID}
+
+      # Azure SQL Admin Credentials (SQL Authentication - for direct DB sync)
+      AZURE_SQL_ADMIN_USERNAME: ${AZURE_SQL_ADMIN_USERNAME}
+      AZURE_SQL_ADMIN_PASSWORD: ${AZURE_SQL_ADMIN_PASSWORD}
+
+      # SAP Business One Database Configuration (On-prem MSSQL)
+      SAP_B1_SERVER: ${SAP_B1_SERVER}
+      SAP_B1_DATABASE: ${SAP_B1_DATABASE}
+      SAP_B1_USERNAME: ${SAP_B1_USERNAME}
+      SAP_B1_PASSWORD: ${SAP_B1_PASSWORD}
+
+      # MSSQL Dataplatform Database configurations
+      MSSQL_DATAPLATFORM_SERVER: ${MSSQL_DATAPLATFORM_SERVER}
+      MSSQL_DATAPLATFORM_DATABASE: ${MSSQL_DATAPLATFORM_DATABASE}
+      MSSQL_DATAPLATFORM_USERNAME: ${MSSQL_DATAPLATFORM_USERNAME}
+      MSSQL_DATAPLATFORM_PASSWORD: ${MSSQL_DATAPLATFORM_PASSWORD}
+
+      # Data Sync Configuration
+      DATA_SYNC_LOOKBACK_YEARS: ${DATA_SYNC_LOOKBACK_YEARS:-2}
+      
+      # PII anonymization toggle (see pii_anonymizer.py)
+      ANNONYMIZE_DATA: ${ANNONYMIZE_DATA:-true}
+
+      # SharePoint File Sync Configuration
+      SHAREPOINT_TENANT_ID: ${SHAREPOINT_TENANT_ID}
+      SHAREPOINT_CLIENT_ID: ${SHAREPOINT_CLIENT_ID}
+      SHAREPOINT_CLIENT_SECRET: ${SHAREPOINT_CLIENT_SECRET}
+      SHAREPOINT_SITE_URL: ${SHAREPOINT_SITE_URL}
+      SHAREPOINT_DRIVE_NAME: ${SHAREPOINT_DRIVE_NAME:-Bridgestone}
+      SHAREPOINT_FILE_NAME: ${SHAREPOINT_FILE_NAME:-Mapping file - GB.xlsx}
+          
+    depends_on:
+      - appbase-init
+    volumes:
+      # Mount Dagster code locations for hot reloading
+      - ./data-platform-service/dagster_code:/app/dagster_code:delegated
+      # CRITICAL: Use shared Dagster storage volume (same as platform)
+      - dagster_shared_storage:/opt/dagster/dagster_home
+      # Mount dbt models for DBT CLI and Dagster assets
+      - ./data-platform-service/dbt_models:/app/dbt_models:delegated
+      # Mount Sweden-specific dbt models
+      - ./data-platform-service/dbt_models_se:/app/dbt_models_se:delegated
+      # Mount data-manager directory for PyAirbyte and sync functions
+      - ./data-platform-service/data-manager:/app/data-manager:delegated
+      # Mount external files directory for Excel files and other external data files
+      - ./data-platform-service/external_files:/app/external_files:delegated
+    ports:
+      - "4266:4266"  # gRPC server port (reserved/compatibility)
+      - "4273:4273"  # Bridgestone data sync gRPC server port
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4266/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - app-base-network
+    logging: *default-logging
+
+volumes:
+  dagster_home:
+    name: dagster_home
+  dagster_shared_storage:
+    name: dagster_shared_storage
+    external: true
+
+networks:
+  app-base-network:
+    name: app-base-network
+    external: true 

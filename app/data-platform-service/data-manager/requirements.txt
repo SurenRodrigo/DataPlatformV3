@@ -1,0 +1,53 @@
+# Dagster core packages - same version as platform
+dagster==1.10.21
+dagster-graphql
+dagster-webserver
+dagster-postgres==0.26.21
+# Additional dependencies for app gRPC servers
+requests
+pandas
+psycopg2-binary
+sqlalchemy 
+# Pin dbt versions to avoid dependency resolution issues with dagster-dbt
+# VERIFIED COMPATIBILITY (checked via PyPI):
+# - dagster-dbt 0.26.21 requires: dagster==1.10.21, dbt-core<1.10,>=1.7
+# - dagster-dbt 0.20.0 requires: dbt-core<1.6 (INCOMPATIBLE with dbt-core 1.9.0)
+# - Therefore: dagster-dbt 0.26.21 + dbt-core 1.9.0 is the correct combination
+# Pinning prevents pip from spending excessive time resolving dbt-semantic-interfaces
+# Note: dbt-core 1.9.x reached end of support Dec 2025, but 1.10.x requires dagster-dbt 0.27+
+dbt-core==1.9.0
+dbt-postgres==1.9.0
+dbt-sqlserver==1.9.0
+dagster-dbt==0.26.21  # Matches dagster==1.10.21 and supports dbt-core 1.9.0 
+# PyAirbyte for Airbyte integration
+airbyte==0.28.0
+airbyte-cdk==6.60.0
+
+# SharePoint integration
+Office365-REST-Python-Client>=2.5.0
+msal>=1.29.0
+python-dotenv
+openpyxl>=3.1.0  # Required for pandas to read Excel files
+
+# Parquet file support
+pyarrow>=10.0.0  # Required for pandas to read parquet files
+
+# Additional dependencies for PyAirbyte DB bridge
+duckdb
+
+# MSSQL connection library
+pyodbc>=5.0.0
+ 
+# MySQL connection library (SQLAlchemy driver)
+mysql-connector-python>=8.0.0
+
+# Realistic fake data for PII anonymization (names, addresses, emails, etc.)
+Faker>=30.0.0
+
+# Security fixes for transitive dependencies (vulnerability remediation)
+# These will be upgraded in Dockerfile after initial installation to override transitive dependencies
+# deepdiff>=8.6.1  # Fixes CVE-2025-58367 (Critical) - upgraded in Dockerfile
+# fastmcp>=2.13.0  # Fixes GHSA-c2jp-c369-7pvx (High), CVE-2025-62801, CVE-2025-62800 (Medium) - upgraded in Dockerfile
+# mcp>=1.10.0      # SKIPPED: Requires jsonschema>=4.20.0 which conflicts with other dependencies
+# langchain-core>=0.1.53  # SKIPPED: airbyte-cdk 6.60.0 requires langchain_core==0.1.42 (exact version)
+# TODO: Consider updating airbyte-cdk to newer version that supports langchain-core 0.1.53+

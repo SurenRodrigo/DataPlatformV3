@@ -1,0 +1,159 @@
+# ============================================================================
+# Multi-Stage Build for Data Manager
+# Purpose: Minimize image size and attack surface while maintaining functionality
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Stage 1: Build Stage
+# ----------------------------------------------------------------------------
+FROM python:3.11-slim AS builder
+
+# Install build dependencies needed for Python package compilation
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        python3-dev \
+        build-essential \
+        libpq-dev \
+        unixodbc-dev \
+        gnupg \
+        ca-certificates \
+        curl \
+        && rm -rf /var/lib/apt/lists/*
+
+# Install Microsoft ODBC Drivers 17 and 18 (needed for pyodbc compilation)
+# Install both for maximum compatibility with different connection strings
+RUN curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft-prod.gpg && \
+    DEBIAN_VERSION=$(cat /etc/debian_version | cut -d. -f1) && \
+    if [ "$DEBIAN_VERSION" = "12" ]; then \
+        echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list; \
+    else \
+        echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" > /etc/apt/sources.list.d/mssql-release.list; \
+    fi && \
+    apt-get update && \
+    (ACCEPT_EULA=Y apt-get install -y msodbcsql18 msodbcsql17 unixodbc || \
+     (echo "Warning: msodbcsql17 may not be available, installing msodbcsql18 only" && \
+      ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc)) && \
+    rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip to latest version (fixes CVE-2025-8869)
+RUN python -m pip install --upgrade --no-cache-dir "pip>=25.3" setuptools wheel
+
+# Copy requirements and install Python packages in stages to help pip resolve dependencies faster
+# This approach reduces dependency resolution time, especially with --no-cache
+COPY data-platform-service/data-manager/requirements.txt /tmp/requirements.txt
+
+# Stage 1: Install core dependencies first (Dagster, basic packages)
+RUN python -m pip install --no-cache-dir --user \
+    dagster==1.10.21 \
+    dagster-graphql \
+    dagster-webserver \
+    dagster-postgres==0.26.21 \
+    requests \
+    pandas \
+    psycopg2-binary \
+    sqlalchemy
+
+# Stage 2: Install dbt packages (pinned versions to avoid resolution conflicts)
+RUN python -m pip install --no-cache-dir --user \
+    dbt-core==1.9.0 \
+    dbt-postgres==1.9.0 \
+    dbt-sqlserver==1.9.0
+
+# Stage 3: Install dagster-dbt (depends on dbt packages)
+# Pin to 0.26.21 to match dagster==1.10.21 and ensure compatibility with dbt-core 1.9.0
+RUN python -m pip install --no-cache-dir --user "dagster-dbt==0.26.21"
+
+# Stage 4: Install remaining packages (including Faker for PII realistic anonymization)
+RUN python -m pip install --no-cache-dir --user \
+    airbyte==0.28.0 \
+    airbyte-cdk==6.60.0 \
+    "Office365-REST-Python-Client>=2.5.0" \
+    "msal>=1.29.0" \
+    python-dotenv \
+    "openpyxl>=3.1.0" \
+    "pyarrow>=10.0.0" \
+    duckdb \
+    "pyodbc>=5.0.0" \
+    "mysql-connector-python>=8.0.0" \
+    "Faker>=30.0.0"
+
+# Upgrade vulnerable packages after installation (override transitive dependencies where possible)
+# Note: Some packages may have dependency conflicts - upgrade only those that work
+RUN python -m pip install --no-cache-dir --user --upgrade \
+    "deepdiff>=8.6.1" \
+    "fastmcp>=2.13.0" || true
+# mcp>=1.10.0 requires jsonschema>=4.20.0 which conflicts with other dependencies - skip for now
+# langchain-core>=0.1.53 conflicts with airbyte-cdk 6.60.0 requirement - skip for now
+
+# ----------------------------------------------------------------------------
+# Stage 2: Runtime Stage
+# ----------------------------------------------------------------------------
+FROM python:3.11-slim
+
+# Update system packages and install ALL runtime system dependencies (DO NOT REMOVE ANY - all are required)
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        netcat-openbsd \
+        jq \
+        postgresql-client \
+        gnupg \
+        ca-certificates \
+        && curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft-prod.gpg && \
+    DEBIAN_VERSION=$(cat /etc/debian_version | cut -d. -f1) && \
+    if [ "$DEBIAN_VERSION" = "12" ]; then \
+        echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list; \
+    else \
+        echo "deb [arch=amd64,arm64,armhf signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/11/prod bullseye main" > /etc/apt/sources.list.d/mssql-release.list; \
+    fi && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql18 msodbcsql17 unixodbc || \
+    (echo "Warning: msodbcsql17 may not be available, installing msodbcsql18 only" && \
+     ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc) && \
+    echo "Installed ODBC drivers:" && \
+    odbcinst -q -d && \
+    update-ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy installed Python packages from builder stage
+COPY --from=builder /root/.local /root/.local
+
+# Ensure local packages are in PATH
+ENV PATH=/root/.local/bin:$PATH
+
+# Upgrade pip in runtime stage (ensure latest version)
+RUN python -m pip install --upgrade --no-cache-dir "pip>=25.3"
+
+# Create app directory for code location mounting
+RUN mkdir -p /app
+
+# Ensure dbt profiles directory exists for volume mount
+RUN mkdir -p /root/.dbt
+
+# Set working directory BEFORE copying files
+WORKDIR /app
+
+# Copy Dagster-specific scripts and resources
+COPY data-platform-service/data-manager/ ./data-manager/
+
+# Create Dagster configuration for app context
+RUN mkdir -p /opt/dagster/dagster_home
+COPY data-platform-service/data-manager/dagster.yaml /opt/dagster/dagster_home/dagster.yaml
+
+# Make entrypoint script executable
+RUN chmod +x /app/data-manager/entrypoint.sh
+
+# Health check for data-manager service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Expose gRPC ports for all code locations
+EXPOSE 4266 4273
+
+# Default command (will be overridden by entrypoint)
+CMD ["/app/data-manager/entrypoint.sh"]

@@ -1,0 +1,97 @@
+################################################################################
+# APPBASE PLATFORM ENVIRONMENT CONFIGURATION
+################################################################################
+# Environment variables required for the platform docker-compose.yaml services
+# Extracted from _env_sample based on actual usage in platform/docker-compose.yaml
+################################################################################
+
+################################################################################
+# PLATFORM CONFIGURATION
+################################################################################
+# IMPORTANT: Service feature toggles are configured in service.yaml at project root
+# See service.yaml for enabling/disabling: db, hasura, metabase, superset, dagster, nginx
+# 
+# The following env vars are NO LONGER USED for feature toggling:
+#   - WITH_BI, WITH_BI_TOOL, WITH_ALL_BI, WITH_DAGSTER
+# These have been removed. All service enablement is controlled via service.yaml
+
+# Deployment environment selector for Nginx config (dev|prod)
+ENVIRONMENT=dev
+
+################################################################################
+# DATABASE CONFIGURATION
+################################################################################
+# Legacy Database Variables (used by platform services)
+DATABASE_USER=dataplatuser
+DATABASE_PASSWORD=dataplatpassword
+DATABASE_HOST=db
+DATABASE_PORT=5432
+DATABASE_DB=dataplatform
+
+
+APPBASE_DB_NAME=dataplatform
+APPBASE_DB_HOST=db
+APPBASE_DB_PORT=5432
+APPBASE_DB_USER=dataplatuser
+APPBASE_DB_PASSWORD=dataplatpassword
+
+# AppBase Configuration Database
+# APPBASE_CONFIG_DB_HOST: Database hostname for platform services
+#   - For local development: Set to "db" (Docker service name)
+#   - For production/external DB: Set to external database hostname/IP
+#     Example: "my-server.postgres.database.azure.com" or "192.168.1.100"
+#   - When using external database (db: external in service.yaml), this MUST be set to external hostname
+#   - The value "db" refers to the Docker service name when using local database container
+APPBASE_CONFIG_DB_HOST=db
+APPBASE_CONFIG_DB_PORT=5432
+APPBASE_CONFIG_DB_USER=dataplatuser
+APPBASE_CONFIG_DB_PASSWORD=dataplatpassword
+APPBASE_CONFIG_DB_NAME=dataplatform
+
+################################################################################
+# HASURA GRAPHQL ENGINE CONFIGURATION
+################################################################################
+HASURA_DB_NAME=hasura
+HASURA_PORT=8081
+HASURA_GRAPHQL_ADMIN_SECRET=admin
+HASURA_VERSION=v2.48.6
+
+################################################################################
+# METABASE BUSINESS INTELLIGENCE CONFIGURATION
+################################################################################
+METABASE_IMAGE="metabase/metabase"
+METABASE_VERSION=v0.57.2
+METABASE_DB_NAME=metabase
+METABASE_PORT=3000
+
+################################################################################
+# APACHE SUPERSET BUSINESS INTELLIGENCE CONFIGURATION
+################################################################################
+SUPERSET_DB_NAME=superset
+SUPERSET_PORT=8088
+SUPERSET_ADMIN_USER=admin
+SUPERSET_ADMIN_EMAIL=admin@admin.com
+SUPERSET_ADMIN_PASSWORD=admin
+SUPERSET_SECRET_KEY=superset_secret_key_change_in_production
+
+################################################################################
+# CLOUDBEAVER WEB DATABASE MANAGER CONFIGURATION
+################################################################################
+CLOUDBEAVER_PORT=8978
+CLOUDBEAVER_VERSION=latest
+
+################################################################################
+# DAGSTER DATA ORCHESTRATION CONFIGURATION
+################################################################################
+DAGSTER_DB_NAME=dagster
+DAGSTER_PORT=3030
+
+################################################################################
+# NGINX REVERSE PROXY CONFIGURATION
+################################################################################
+NGINX_PORT=80
+
+################################################################################
+# APPLICATION SECURITY CONFIGURATION
+################################################################################
+APP_BASE_SECRET="55905c45-3f61-4b7d-8f9f-e09784ab9521" 

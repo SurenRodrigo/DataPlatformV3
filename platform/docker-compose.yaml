@@ -1,0 +1,295 @@
+version: "3.8"
+#https://github.com/compose-spec/compose-spec/blob/master/spec.md#using-extensions-as-fragments
+x-logging: &default-logging
+  options:
+    max-size: "100m"
+    max-file: "5"
+  driver: json-file
+services:
+  # Platform core services (no appbase-init dependency)
+  
+  db:
+    profiles: ["local-db"]
+    platform: linux/amd64
+    image: postgres:15-alpine
+    logging: *default-logging
+    container_name: appbase-db
+    restart: unless-stopped
+    entrypoint: ["/postgres-entrypoint.sh"]
+    environment:
+      POSTGRES_DB: ${DATABASE_DB}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      HASURA_DB_NAME: ${HASURA_DB_NAME}
+      METABASE_DB_NAME: ${METABASE_DB_NAME}
+      SUPERSET_DB_NAME: ${SUPERSET_DB_NAME}
+      DAGSTER_DB_NAME: ${DAGSTER_DB_NAME}
+    volumes:
+      - db:/var/lib/postgresql/data
+      - ./postgres-entrypoint.sh:/postgres-entrypoint.sh:ro
+      - ../service.yaml:/app/service.yaml:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - appbase_intternal
+      - app-base-network
+  
+  #Other services
+  hasura:
+    profiles: ["hasura"]
+    image: hasura/graphql-engine:${HASURA_VERSION?}
+    container_name: hasura
+    ports:
+      - ${HASURA_PORT?}:8080
+    depends_on:
+      db:
+          condition: service_healthy
+    restart: unless-stopped
+    environment:
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      HASURA_GRAPHQL_DEV_MODE: "false"
+      HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"${APP_BASE_SECRET}"}'
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup,http-log,webhook-log,websocket-log,query-log
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${APPBASE_DB_USER}:${APPBASE_DB_PASSWORD}@${APPBASE_DB_HOST}:${APPBASE_DB_PORT}/${APPBASE_DB_NAME}
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://${APPBASE_CONFIG_DB_USER?}:${APPBASE_CONFIG_DB_PASSWORD?}@${APPBASE_CONFIG_DB_HOST?}:${APPBASE_CONFIG_DB_PORT?}/${HASURA_DB_NAME?}
+    # Remove memory limits that might interfere with Rosetta emulation
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 1G
+    #     reservations:
+    #       memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - appbase_intternal
+      - app-base-network
+    logging: *default-logging
+
+  # BI Services with Docker Compose Profiles
+  metabase:
+    profiles: ["metabase"]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.metabase
+    image: appbase/metabase:hardened
+    container_name: metabase
+    ports:
+      - ${METABASE_PORT?}:3000
+    depends_on:
+      db:
+          condition: service_started
+    restart: unless-stopped
+    environment:
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_DB_DBNAME: ${METABASE_DB_NAME?}
+      MB_DB_HOST: ${APPBASE_CONFIG_DB_HOST?}
+      MB_DB_PASS: ${APPBASE_CONFIG_DB_PASSWORD?}
+      MB_DB_PORT: ${APPBASE_CONFIG_DB_PORT?}
+      MB_DB_TYPE: postgres
+      MB_DB_USER: ${APPBASE_CONFIG_DB_USER?}
+      MB_PASSWORD_COMPLEXITY: weak
+      MB_PASSWORD_LENGTH: 1
+      MB_SEND_EMAIL_ON_FIRST_LOGIN_FROM_NEW_DEVICE: "false"
+    networks:
+      - appbase_intternal
+      - app-base-network
+
+  superset:
+    profiles: ["superset"]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    image: appbase/superset:source-build
+    container_name: superset
+    ports:
+      - ${SUPERSET_PORT?}:8088
+    depends_on:
+      db:
+          condition: service_started
+    restart: unless-stopped
+    environment:
+      # Superset core configuration
+      SUPERSET_CONFIG_PATH: /etc/superset/superset_config.py
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY?}
+      SUPERSET_LOAD_EXAMPLES: "no"
+      
+      # Database configuration for Superset metadata
+      SUPERSET_DATABASE_URI: postgres://${APPBASE_CONFIG_DB_USER?}:${APPBASE_CONFIG_DB_PASSWORD?}@${APPBASE_CONFIG_DB_HOST?}:${APPBASE_CONFIG_DB_PORT?}/${SUPERSET_DB_NAME?}
+      
+      # Admin user configuration
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER?}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL?}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD?}
+      
+      # Application database connection (for data sources)
+      SUPERSET_APPBASE_DB_HOST: ${APPBASE_CONFIG_DB_HOST?}
+      SUPERSET_APPBASE_DB_PORT: ${APPBASE_CONFIG_DB_PORT?}
+      SUPERSET_APPBASE_DB_USER: ${APPBASE_CONFIG_DB_USER?}
+      SUPERSET_APPBASE_DB_PASSWORD: ${APPBASE_CONFIG_DB_PASSWORD?}
+      SUPERSET_APPBASE_DB_NAME: ${APPBASE_CONFIG_DB_NAME?}
+      
+      # Database host for entrypoint script (used for wait logic)
+      APPBASE_CONFIG_DB_HOST: ${APPBASE_CONFIG_DB_HOST?}
+      
+      # Gunicorn configuration (optional - defaults to 2 workers)
+      # SUPERSET_GUNICORN_WORKERS: ${SUPERSET_GUNICORN_WORKERS:-2}
+      
+    volumes:
+      - ./superset_config.py:/etc/superset/superset_config.py:ro
+      - apache-superset:/app/superset_home
+    networks:
+      - appbase_intternal
+      - app-base-network
+
+  # CloudBeaver Community - Web database manager
+  cloudbeaver:
+    profiles: ["cloudbeaver"]
+    platform: linux/amd64
+    image: dbeaver/cloudbeaver:${CLOUDBEAVER_VERSION:-latest}
+    container_name: cloudbeaver
+    ports:
+      - "${CLOUDBEAVER_PORT:-8978}:8978"
+    depends_on:
+      db:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - cloudbeaver_workspace:/opt/cloudbeaver/workspace
+    networks:
+      - appbase_intternal
+      - app-base-network
+    healthcheck:
+      disable: true
+    logging: *default-logging
+
+  # Dagster Services with Docker Compose Profiles
+  dagster-webserver:
+    profiles: ["dagster"]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
+    container_name: dagster-webserver
+    ports:
+      - ${DAGSTER_PORT?}:3030
+    depends_on:
+      db:
+          condition: service_started
+    restart: unless-stopped
+    command: ["dagster-webserver", "-h", "0.0.0.0", "-p", "3030", "-w", "workspace.yaml"]
+    environment:
+      # Database configuration for Dagster metadata
+      DATABASE_USER: ${DATABASE_USER?}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD?}
+      DATABASE_HOST: ${APPBASE_CONFIG_DB_HOST?}
+      DATABASE_PORT: ${APPBASE_CONFIG_DB_PORT?}
+      DAGSTER_DB_NAME: ${DAGSTER_DB_NAME?}
+      
+      # Dagster instance configuration
+      DAGSTER_HOME: /opt/dagster/dagster_home
+    volumes:
+      - dagster_shared_storage:/opt/dagster/dagster_home
+    networks:
+      - appbase_intternal
+      - app-base-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3030/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  dagster-daemon:
+    profiles: ["dagster"]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
+    container_name: dagster-daemon
+    depends_on:
+      db:
+          condition: service_started
+    restart: unless-stopped
+    command: ["dagster-daemon", "run"]
+    environment:
+      # Database configuration for Dagster metadata
+      DATABASE_USER: ${DATABASE_USER?}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD?}
+      DATABASE_HOST: ${APPBASE_CONFIG_DB_HOST?}
+      DATABASE_PORT: ${APPBASE_CONFIG_DB_PORT?}
+      DAGSTER_DB_NAME: ${DAGSTER_DB_NAME?}
+      
+      # Dagster instance configuration
+      DAGSTER_HOME: /opt/dagster/dagster_home
+    volumes:
+      - dagster_shared_storage:/opt/dagster/dagster_home
+    networks:
+      - appbase_intternal
+      - app-base-network
+    healthcheck:
+      disable: true
+
+  # Nginx Reverse Proxy Service
+  nginx:
+    profiles: ["nginx"]
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    image: appbase/nginx-hardened:alpine
+    container_name: nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "443:443"
+      - "8090:8090"
+    depends_on:
+      db:
+          condition: service_started
+    restart: unless-stopped
+    volumes:
+      - ./nginx.${ENVIRONMENT:-dev}.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.htpasswd:/etc/nginx/.htpasswd:ro
+      - ./certs:/etc/nginx/certs:ro
+    # no extra volumes required; headers-more is installed in the image
+    networks:
+      - appbase_intternal
+      - app-base-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging: *default-logging
+
+volumes:
+  db:
+  apache-superset:
+    name: apache-superset
+  cloudbeaver_workspace:
+    name: cloudbeaver_workspace
+  dagster_shared_storage:
+    name: dagster_shared_storage
+configs:
+  flags:
+    file: ./flags.yml
+networks:
+  app-base-network:
+    name: app-base-network
+    external: true
+  appbase_intternal:

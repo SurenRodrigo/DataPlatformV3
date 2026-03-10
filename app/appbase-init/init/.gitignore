@@ -1,0 +1,100 @@
+# compiled output
+/dist
+/node_modules
+init/node_modules/
+/custom_modes
+/state-data
+.history
+.env
+.env*
+.idea
+.pki
+.pnpm/*
+.pnpm-store/*
+
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Python bytecode and cache directories
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+*.virtualenv
+
+# DBT specific folders
+dbt_packages/
+target/
+logs/
+# Jupyter Notebook checkpoints (if applicable)
+.ipynb_checkpoints/
+
+# macOS system files
+.DS_Store
+
+# VS Code workspace settings
+.vscode/
+*.code-workspace
+
+# PyCharm project files
+.idea/
+
+# SQLite database (if using for development)
+dbt.db
+
+# Credentials and sensitive information
+profiles.yml
+secrets.env
+
+# Temporary files and local environment files
+*.tmp
+*.swp
+*.swo
+dbt-dev/
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+cli/node_modules/
+cli/pnpm-lock.yaml
+init/node_modules/
+init/pnpm-lock.yaml
+sonar-project*
+.sonar*
+report-task*
+.scannerwork/
+.husky/

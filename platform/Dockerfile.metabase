@@ -1,0 +1,76 @@
+# ============================================================================
+# Stage 1: Dependencies Download
+# ============================================================================
+# Download all fixed JAR dependencies in a minimal Alpine image
+FROM alpine:latest AS deps
+
+# Install curl for downloading JARs
+RUN apk add --no-cache curl
+
+# Create directory for dependencies
+WORKDIR /deps
+
+# Download all fixed JAR files from Maven Central
+# High vulnerabilities (2)
+RUN curl -L -o mssql-jdbc-13.2.1.jre8.jar \
+        https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/13.2.1.jre8/mssql-jdbc-13.2.1.jre8.jar && \
+    curl -L -o netty-codec-smtp-4.1.128.Final.jar \
+        https://repo1.maven.org/maven2/io/netty/netty-codec-smtp/4.1.128.Final/netty-codec-smtp-4.1.128.Final.jar
+
+# Medium vulnerabilities - fixable (3)
+RUN curl -L -o netty-codec-4.1.125.Final.jar \
+        https://repo1.maven.org/maven2/io/netty/netty-codec/4.1.125.Final/netty-codec-4.1.125.Final.jar && \
+    curl -L -o nimbus-jose-jwt-10.0.2.jar \
+        https://repo1.maven.org/maven2/com/nimbusds/nimbus-jose-jwt/10.0.2/nimbus-jose-jwt-10.0.2.jar && \
+    curl -L -o commons-lang3-3.18.0.jar \
+        https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.18.0/commons-lang3-3.18.0.jar
+
+# Verify JAR files are downloaded
+RUN ls -lh /deps/*.jar && \
+    test -f /deps/mssql-jdbc-13.2.1.jre8.jar && \
+    test -f /deps/netty-codec-smtp-4.1.128.Final.jar && \
+    test -f /deps/netty-codec-4.1.125.Final.jar && \
+    test -f /deps/nimbus-jose-jwt-10.0.2.jar && \
+    test -f /deps/commons-lang3-3.18.0.jar
+
+# ============================================================================
+# Stage 2: Runtime - Metabase with Fixed Dependencies
+# ============================================================================
+FROM metabase/metabase:v0.57.2
+
+# Switch to root to modify files
+USER root
+
+# Create directory for fixed dependencies
+RUN mkdir -p /app/plugins/fixed-deps
+
+# Copy all fixed JAR dependencies from deps stage
+COPY --from=deps /deps/*.jar /app/plugins/fixed-deps/
+
+# Ensure proper permissions (readable by all, writable by owner)
+# The metabase user will be created at runtime by the startup script
+RUN chmod -R 755 /app/plugins/fixed-deps
+
+# Create modified startup script that adds fixed dependencies to classpath
+# Java classpath precedence: JARs listed first take precedence over those in metabase.jar
+# Main class: metabase.core.bootstrap (from metabase.jar manifest)
+RUN cp /app/run_metabase.sh /app/run_metabase.sh.original && \
+    sed -i 's|-jar /app/metabase.jar|-cp /app/plugins/fixed-deps/*:/app/metabase.jar metabase.core.bootstrap|' /app/run_metabase.sh
+
+# Cleanup: Remove any temporary files
+RUN rm -rf /tmp/* /var/tmp/* 2>/dev/null || true
+
+# Verify fixed dependencies are accessible (as root, before switching user)
+RUN test -d /app/plugins/fixed-deps && \
+    test -f /app/plugins/fixed-deps/mssql-jdbc-13.2.1.jre8.jar && \
+    test -f /app/plugins/fixed-deps/netty-codec-smtp-4.1.128.Final.jar && \
+    test -f /app/plugins/fixed-deps/netty-codec-4.1.125.Final.jar && \
+    test -f /app/plugins/fixed-deps/nimbus-jose-jwt-10.0.2.jar && \
+    test -f /app/plugins/fixed-deps/commons-lang3-3.18.0.jar
+
+# Note: USER metabase is not set here because the metabase user is created at runtime
+# by the startup script. The startup script will handle running as the correct user.
+
+# Maintain original Metabase entrypoint
+# The modified run_metabase.sh will be used automatically
+

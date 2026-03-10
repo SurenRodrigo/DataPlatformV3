@@ -1,0 +1,29 @@
+{
+  "AppBaseAdmin": {
+    "select": {
+      "columns": "*",
+      "filter": {}
+    },
+    "insert": {
+      "columns": "*",
+      "check": {}
+    },
+    "update": {
+      "columns": "*",
+      "filter": {}
+    },
+    "delete": {
+      "filter": {}
+    }
+  },
+  "User": {
+    "select": {
+      "columns": "*",
+      "filter": {
+        "user_id": {
+          "_eq": "X-Hasura-User-Id"
+        }
+      }
+    }
+  }
+} 

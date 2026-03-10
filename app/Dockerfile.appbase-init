@@ -1,0 +1,128 @@
+# Build stage: Install Node.js, build TypeScript application
+FROM ubuntu:24.04 AS builder
+USER root
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Node.js 24.11.1 LTS directly from nodejs.org (official binary)
+# Remove any existing NodeSource repositories and old Node.js installations
+RUN rm -f /etc/apt/sources.list.d/nodesource.list /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        xz-utils && \
+    # Remove any existing nodejs/npm packages from system (if any)
+    apt-get remove -y nodejs npm 2>/dev/null || true && \
+    apt-get autoremove -y && \
+    # Install Node.js 24.11.1 LTS from official binary
+    NODE_VERSION=24.11.1 && \
+    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz -o /tmp/node.tar.xz && \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 && \
+    rm /tmp/node.tar.xz && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create flyway user (for consistency)
+RUN adduser --disabled-password --gecos "" flyway || true
+
+# Setup app directories
+RUN mkdir -p /home/flyway/appbase
+WORKDIR /home/flyway/appbase
+
+# Copy package files and source code
+COPY appbase-init/init/.tsconfig.json appbase-init/init/package.json appbase-init/init/package-lock.json ./
+COPY appbase-init/init/resources ./resources
+COPY appbase-init/init/src ./src
+
+# Regenerate package-lock.json to sync with package.json (if needed) and install dependencies
+RUN npm install --package-lock-only 2>/dev/null || true && \
+    npm ci && \
+    npm run build
+
+# Flyway stage: Extract Flyway from official image
+FROM flyway/flyway:latest AS flyway-source
+
+# Runtime stage: Ubuntu 24.04 with Flyway and Node.js manually installed
+FROM ubuntu:24.04 AS runtime
+USER root
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Java (required for Flyway) and system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        openjdk-17-jre-headless \
+        curl \
+        ca-certificates \
+        gnupg \
+        jq \
+        postgresql-client \
+        netcat-openbsd \
+        wget \
+        iputils-ping \
+        nano \
+        sudo && \
+    apt-get upgrade -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 24.11.1 LTS directly from nodejs.org (official binary)
+# Remove any existing NodeSource repositories and old Node.js installations
+RUN rm -f /etc/apt/sources.list.d/nodesource.list /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        xz-utils && \
+    # Remove any existing nodejs/npm packages from system (if any)
+    apt-get remove -y nodejs npm 2>/dev/null || true && \
+    apt-get autoremove -y && \
+    # Install Node.js 24.11.1 LTS from official binary
+    NODE_VERSION=24.11.1 && \
+    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz -o /tmp/node.tar.xz && \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 && \
+    rm /tmp/node.tar.xz && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy Flyway from official image
+COPY --from=flyway-source /flyway /flyway
+RUN chmod +x /flyway/flyway && \
+    ln -s /flyway/flyway /usr/local/bin/flyway
+
+# Create flyway user and setup
+RUN adduser --disabled-password --gecos "" flyway && \
+    echo 'flyway:password' | chpasswd && \
+    usermod -aG sudo flyway
+
+# Setup app directories
+RUN mkdir -p /home/flyway/appbase
+WORKDIR /home/flyway/appbase
+
+# Copy built application from builder stage
+COPY --from=builder --chown=flyway:flyway /home/flyway/appbase/lib ./lib
+COPY --from=builder --chown=flyway:flyway /home/flyway/appbase/resources ./resources
+COPY --from=builder --chown=flyway:flyway /home/flyway/appbase/node_modules ./node_modules
+
+# Copy database schemas and scripts (from build context)
+COPY --chown=flyway:flyway appbase-init/appbase-schemas ./appbase-schemas
+COPY --chown=flyway:flyway appbase-init/init/scripts ./scripts
+# Ensure parse-service-yaml.js is executable
+RUN chmod +x ./scripts/parse-service-yaml.js
+
+# Set ownership and permissions
+RUN chown -R flyway:flyway /home/flyway/appbase && \
+    chmod +x /home/flyway/appbase/scripts/*.sh && \
+    chmod +x /home/flyway/appbase/scripts/parse-service-yaml.js
+
+# Switch to flyway user
+USER flyway
+
+# Set final working directory
+WORKDIR /home/flyway/appbase/scripts
+
+# Entrypoint
+ENTRYPOINT ["./entrypoint.sh"]

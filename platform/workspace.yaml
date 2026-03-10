@@ -1,0 +1,10 @@
+# Dagster Workspace Configuration - Multiple gRPC Servers
+# Workspace: appbase-dagster-workspace
+# Description: AppBase Data Platform Dagster Workspace (bridgestone_data_sync only)
+
+load_from:
+  - grpc_server:
+      host: data-platform-service
+      port: 4273
+      location_name: bridgestone_data_sync
+      # Bridgestone data sync code location for Bridgestone data pipeline

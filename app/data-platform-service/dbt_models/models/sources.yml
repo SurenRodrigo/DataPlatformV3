@@ -1,0 +1,10 @@
+# Placeholder for future source definitions.
+# Add actual source schemas and tables when implementing.
+# https://docs.getdbt.com/reference/declaring-properties/sources
+version: 2
+
+sources:
+  - name: placeholder
+    description: "Placeholder source - replace with actual source definitions."
+    schema: placeholder
+    tables: []

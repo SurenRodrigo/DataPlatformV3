@@ -1,0 +1,85 @@
+################################################################################
+# APPBASE PLATFORM ENVIRONMENT CONFIGURATION
+################################################################################
+# Environment variables required for the platform docker-compose.yaml services
+# Extracted from _env_sample based on actual usage in platform/docker-compose.yaml
+################################################################################
+
+################################################################################
+# PLATFORM CONFIGURATION
+################################################################################
+# IMPORTANT: Service feature toggles are configured in service.yaml at project root
+# See service.yaml for enabling/disabling: db, hasura, metabase, superset, dagster, nginx
+# 
+# The following env vars are NO LONGER USED for feature toggling:
+#   - WITH_BI, WITH_BI_TOOL, WITH_ALL_BI, WITH_DAGSTER
+# These have been removed. All service enablement is controlled via service.yaml
+
+# Deployment environment selector for Nginx config (dev|prod)
+ENVIRONMENT="${ENV}"
+
+################################################################################
+# DATABASE CONFIGURATION
+################################################################################
+# Legacy Database Variables (used by platform services)
+DATABASE_USER="${DB_USER}"
+DATABASE_PASSWORD="${DB_PASSWORD}"
+DATABASE_HOST="${DB_HOST}"
+DATABASE_PORT=5432
+DATABASE_DB=dataplatform
+
+# Main AppBase Database
+APPBASE_DB_NAME=dataplatform
+APPBASE_DB_HOST="${DB_HOST}"
+APPBASE_DB_PORT=5432
+APPBASE_DB_USER="${DB_USER}"
+APPBASE_DB_PASSWORD="${DB_PASSWORD}"
+
+# AppBase Configuration Database  
+APPBASE_CONFIG_DB_HOST="${DB_HOST}"
+APPBASE_CONFIG_DB_PORT=5432
+APPBASE_CONFIG_DB_USER="${DB_USER}"
+APPBASE_CONFIG_DB_PASSWORD="${DB_PASSWORD}"
+APPBASE_CONFIG_DB_NAME=dataplatform
+
+################################################################################
+# HASURA GRAPHQL ENGINE CONFIGURATION
+################################################################################
+HASURA_DB_NAME=hasura
+HASURA_PORT=8081
+HASURA_GRAPHQL_ADMIN_SECRET="${HASURA_ADMIN_SECRET}"
+HASURA_VERSION=v2.48.6
+
+################################################################################
+# METABASE BUSINESS INTELLIGENCE CONFIGURATION
+################################################################################
+METABASE_IMAGE="metabase/metabase"
+METABASE_VERSION=v0.57.2
+METABASE_DB_NAME=metabase
+METABASE_PORT=3000
+
+################################################################################
+# APACHE SUPERSET BUSINESS INTELLIGENCE CONFIGURATION
+################################################################################
+SUPERSET_DB_NAME=superset
+SUPERSET_PORT="${SUPERSET_PORT}"
+SUPERSET_ADMIN_USER="${SUPERSET_ADMIN_USER}"
+SUPERSET_ADMIN_EMAIL="${SUPERSET_ADMIN_EMAIL}"
+SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD}"
+SUPERSET_SECRET_KEY="${SUPERSET_SECRET_KEY}"
+
+################################################################################
+# DAGSTER DATA ORCHESTRATION CONFIGURATION
+################################################################################
+DAGSTER_DB_NAME=dagster
+DAGSTER_PORT=3030
+
+################################################################################
+# NGINX REVERSE PROXY CONFIGURATION
+################################################################################
+NGINX_PORT=80
+
+################################################################################
+# APPLICATION SECURITY CONFIGURATION
+################################################################################
+APP_BASE_SECRET="${HASURA_JWT_SECRET}"

@@ -1,0 +1,27 @@
+# Override file for external database mode
+# This file removes depends_on: db references when using external database
+# Usage: docker compose -f docker-compose.yaml -f docker-compose.no-db.yaml up
+# Note: Using !override to replace depends_on instead of merging
+
+services:
+  hasura:
+    depends_on: !override []
+  
+  metabase:
+    depends_on: !override []
+  
+  superset:
+    depends_on: !override []
+  
+  dagster-webserver:
+    depends_on: !override []
+  
+  dagster-daemon:
+    depends_on: !override []
+  
+  nginx:
+    depends_on: !override []
+
+  cloudbeaver:
+    depends_on: !override []
+

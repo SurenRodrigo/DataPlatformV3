@@ -1,0 +1,184 @@
+# Multi-Stage Build for Apache Superset from Source
+# Base: Ubuntu 24.04 LTS
+# Purpose: Build Superset 5.0.0 with controlled dependencies
+
+# ============================================================================
+# Stage 1: Build Stage
+# ============================================================================
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python 3.11 and build dependencies
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        curl \
+        gnupg \
+        ca-certificates && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-dev \
+        python3.11-venv \
+        python3.11-distutils \
+        build-essential \
+        gcc \
+        g++ \
+        libssl-dev \
+        libffi-dev \
+        libsasl2-dev \
+        libldap2-dev \
+        libpq-dev \
+        postgresql-client \
+        netcat-traditional \
+        unixodbc-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Microsoft ODBC Driver 18 for SQL Server (needed for Azure SQL Database connectivity)
+# This is required for pyodbc to compile and connect to Azure SQL Database
+RUN curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft-prod.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python3.11 -m venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Upgrade pip and basic build tools
+RUN python -m pip install --upgrade --no-cache-dir pip setuptools wheel
+
+# Install Apache Superset 5.0.0
+RUN python -m pip install --no-cache-dir "apache-superset==5.0.0"
+
+# Fix marshmallow version compatibility issue
+# Superset 5.0.0 requires marshmallow 3.x (not 4.x which removed minLength parameter)
+RUN python -m pip install --force-reinstall --no-cache-dir "marshmallow>=3.20.0,<4.0.0"
+
+# --------------------------------------------------------------------------
+# Keep Superset's tested numeric stack for Python 3.11:
+# numpy 1.26.4, pandas 2.0.3, pyarrow 14.0.2
+# --------------------------------------------------------------------------
+# RUN python -m pip install --force-reinstall --no-cache-dir \
+#       "numpy==1.26.4" \
+#       "pandas==2.0.3" \
+#       "pyarrow==14.0.2"
+RUN python -m pip install --upgrade --no-cache-dir "pyarrow==17.0.0" --no-deps
+
+# Optional: patch libraries with known CVEs (patch-level bumps)
+RUN python -m pip install --upgrade --no-cache-dir \
+      "jinja2>=3.1.6" \
+      "urllib3>=2.5.0" \
+      "brotli>=1.2.0" \
+      "cryptography==43.0.3"
+
+# Additional Python packages you need
+RUN python -m pip install --no-cache-dir \
+      psycopg2-binary \
+      flask-cors \
+      gunicorn \
+      "pyodbc>=5.0.0"
+
+# Verify key versions in builder image
+RUN python -c "import numpy, pandas, pyarrow, importlib.metadata as m; \
+print('numpy version:', numpy.__version__); \
+print('pandas version:', pandas.__version__); \
+print('pyarrow version:', pyarrow.__version__); \
+print('Superset dist version:', m.version('apache-superset'))"
+
+# ============================================================================
+# Stage 2: Runtime Stage
+# ============================================================================
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only runtime dependencies
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        curl \
+        gnupg \
+        ca-certificates && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3.11-distutils \
+        postgresql-client \
+        netcat-traditional \
+        unixodbc && \
+    # --- IMPORTANT: remove system-level cryptography so Docker Scout
+    #               doesn't see the vulnerable 41.0.7 package ---
+    apt-get purge -y python3-cryptography || true && \
+    rm -rf /usr/lib/python3*/dist-packages/cryptography* && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install Microsoft ODBC Driver 18 for SQL Server (runtime)
+# Required for pyodbc to connect to Azure SQL Database
+RUN curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft-prod.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main" > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 && \
+    # Verify ODBC driver installation
+    echo "Installed ODBC drivers:" && odbcinst -q -d && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Create superset user (non-root; don't force UID)
+RUN if ! id -u superset >/dev/null 2>&1; then \
+      useradd -m -s /bin/bash superset; \
+    fi && \
+    mkdir -p /app && \
+    chown -R superset:superset /app
+
+WORKDIR /app
+
+# Entry script
+COPY superset_entrypoint.sh /usr/local/bin/superset_entrypoint.sh
+RUN chmod +x /usr/local/bin/superset_entrypoint.sh
+
+# Copy logo assets into Superset's static dir inside the venv
+COPY superset_assets/superset-logo.png /tmp/superset_logo.png
+RUN python -c "import superset, os, shutil; \
+src = '/tmp/superset_logo.png'; \
+dst = os.path.join(os.path.dirname(superset.__file__), 'static/assets/images/superset_logo.png'); \
+os.makedirs(os.path.dirname(dst), exist_ok=True); \
+shutil.copy2(src, dst); \
+print('Logo copied to:', dst)" \
+ && rm /tmp/superset_logo.png \
+ && chown -R superset:superset /app
+
+# Superset config
+RUN mkdir -p /etc/superset && \
+    chown -R superset:superset /etc/superset
+COPY superset_config.py /etc/superset/superset_config.py
+
+ENV SUPERSET_CONFIG_PATH=/etc/superset/superset_config.py
+ENV FLASK_APP=superset
+ENV PYTHONPATH=/app
+
+USER superset
+
+# Final sanity checks in runtime image
+RUN python -c "import superset, pyarrow, psycopg2, pyodbc, numpy, pandas, importlib.metadata as m; \
+print('Superset dist version:', m.version('apache-superset')); \
+print('pyarrow version:', pyarrow.__version__); \
+print('numpy version:', numpy.__version__); \
+print('pandas version:', pandas.__version__); \
+print('psycopg2 installed OK'); \
+print('pyodbc version:', pyodbc.version); \
+print('ODBC drivers:', [d for d in pyodbc.drivers()])"
+
+CMD ["/usr/local/bin/superset_entrypoint.sh"]

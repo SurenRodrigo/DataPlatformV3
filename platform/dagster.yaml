@@ -1,0 +1,58 @@
+# Dagster Instance Configuration
+# Explicit Postgres storage configuration for Dagster 1.10.x
+
+run_storage:
+  module: dagster_postgres.run_storage
+  class: PostgresRunStorage
+  config:
+    postgres_db:
+      username:
+        env: DATABASE_USER
+      password:
+        env: DATABASE_PASSWORD
+      hostname:
+        env: DATABASE_HOST
+      db_name:
+        env: DAGSTER_DB_NAME
+      port:
+        env: DATABASE_PORT
+
+event_log_storage:
+  module: dagster_postgres.event_log
+  class: PostgresEventLogStorage
+  config:
+    postgres_db:
+      username:
+        env: DATABASE_USER
+      password:
+        env: DATABASE_PASSWORD
+      hostname:
+        env: DATABASE_HOST
+      db_name:
+        env: DAGSTER_DB_NAME
+      port:
+        env: DATABASE_PORT
+
+schedule_storage:
+  module: dagster_postgres.schedule_storage
+  class: PostgresScheduleStorage
+  config:
+    postgres_db:
+      username:
+        env: DATABASE_USER
+      password:
+        env: DATABASE_PASSWORD
+      hostname:
+        env: DATABASE_HOST
+      db_name:
+        env: DAGSTER_DB_NAME
+      port:
+        env: DATABASE_PORT
+
+run_launcher:
+  module: dagster._core.launcher
+  class: DefaultRunLauncher
+
+code_servers:
+  reload_timeout: 60
+  local_startup_timeout: 60 

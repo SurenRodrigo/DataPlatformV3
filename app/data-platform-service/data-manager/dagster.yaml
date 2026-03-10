@@ -1,0 +1,63 @@
+# Dagster Instance Configuration for App Context
+# Uses same database configuration as platform but is app-independent
+
+run_storage:
+  module: dagster_postgres.run_storage
+  class: PostgresRunStorage
+  config:
+    postgres_db:
+      username:
+        env: DATABASE_USER
+      password:
+        env: DATABASE_PASSWORD
+      hostname:
+        env: DATABASE_HOST
+      db_name:
+        env: DAGSTER_DB_NAME
+      port:
+        env: DATABASE_PORT
+
+event_log_storage:
+  module: dagster_postgres.event_log
+  class: PostgresEventLogStorage
+  config:
+    postgres_db:
+      username:
+        env: DATABASE_USER
+      password:
+        env: DATABASE_PASSWORD
+      hostname:
+        env: DATABASE_HOST
+      db_name:
+        env: DAGSTER_DB_NAME
+      port:
+        env: DATABASE_PORT
+
+schedule_storage:
+  module: dagster_postgres.schedule_storage
+  class: PostgresScheduleStorage
+  config:
+    postgres_db:
+      username:
+        env: DATABASE_USER
+      password:
+        env: DATABASE_PASSWORD
+      hostname:
+        env: DATABASE_HOST
+      db_name:
+        env: DAGSTER_DB_NAME
+      port:
+        env: DATABASE_PORT
+
+# Use local file storage for run queue and other metadata
+run_queue:
+  module: dagster._core.run_coordinator
+  class: QueuedRunCoordinator
+
+run_launcher:
+  module: dagster._core.launcher
+  class: DefaultRunLauncher
+
+code_servers:
+  reload_timeout: 60
+  local_startup_timeout: 60 
